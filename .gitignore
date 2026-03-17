@@ -1,0 +1,5 @@
+config.py
+encodings.pkl
+__pycache__
+*.pyc
+reports/

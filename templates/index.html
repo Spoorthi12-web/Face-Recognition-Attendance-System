@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #F5F7FA; color: #333; }
+  .navbar { background: #0D47A1; padding: 14px 30px; display: flex; justify-content: space-between; align-items: center; }
+  .navbar h1 { color: #fff; font-size: 20px; font-weight: 500; }
+  .navbar span { color: #90CAF9; font-size: 13px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+  .metric { background: #fff; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #E3E8F0; }
+  .metric-val { font-size: 36px; font-weight: 600; }
+  .metric-lbl { font-size: 13px; color: #777; margin-top: 6px; }
+  .mv-total   { color: #0D47A1; }
+  .mv-present { color: #2E7D32; }
+  .mv-absent  { color: #C62828; }
+  .mv-pct     { color: #E65100; }
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #E3E8F0; }
+  .card h3 { font-size: 14px; font-weight: 500; color: #333; margin-bottom: 16px; }
+  .chart-wrap { position: relative; height: 200px; }
+  .table-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid #E3E8F0; margin-bottom: 20px; }
+  .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+  .table-header h3 { font-size: 14px; font-weight: 500; }
+  .btn { padding: 8px 18px; border-radius: 20px; border: 1px solid #ddd; background: #fff; color: #555; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .btn:hover { background: #F0F4FF; }
+  .btn-green { background: #2E7D32; color: #fff; border-color: #2E7D32; }
+  .btn-green:hover { background: #1B5E20; }
+  .search { padding: 7px 14px; border-radius: 20px; border: 1px solid #ddd; font-size: 13px; width: 180px; outline: none; }
+  .search:focus { border-color: #0D47A1; }
+  .filter-row { display: flex; gap: 6px; }
+  .fbtn { padding: 5px 14px; border-radius: 14px; border: 1px solid #ddd; background: #fff; color: #777; font-size: 12px; cursor: pointer; }
+  .fbtn.active { background: #E3F2FD; color: #0D47A1; border-color: #90CAF9; font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #F0F0F0; }
+  td { padding: 12px; border-bottom: 1px solid #F7F7F7; color: #333; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #F8FAFF; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+  .name-cell { display: flex; align-items: center; gap: 10px; }
+  .pill { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 10px; }
+  .pill-present { background: #E8F5E9; color: #2E7D32; }
+  .pill-absent  { background: #FFEBEE; color: #C62828; }
+  .mono { font-family: monospace; font-size: 12px; color: #666; }
+  .no-data { text-align: center; padding: 30px; color: #aaa; font-size: 13px; }
+  .legend { display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; color: #666; }
+  .leg { display: flex; align-items: center; gap: 5px; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .refresh-btn { padding: 7px 16px; border-radius: 20px; border: 1px solid #0D47A1; background: #E3F2FD; color: #0D47A1; font-size: 12px; cursor: pointer; }
+  .refresh-btn:hover { background: #BBDEFB; }
+  @media (max-width: 700px) {
+    .metrics { grid-template-columns: repeat(2,1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <h1>Attendance Dashboard</h1>
+  <span id="current-time"></span>
+</div>
+
+<div class="container">
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+    <div style="font-size:13px;color:#777;">Showing data for: <strong id="today-date"></strong></div>
+    <div style="display:flex;gap:8px;">
+      <button class="refresh-btn" onclick="loadAll()">Refresh</button>
+      <button class="btn btn-green" onclick="generateReport()">Export Excel</button>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-val mv-total"   id="m-total">—</div><div class="metric-lbl">Total registered</div></div>
+    <div class="metric"><div class="metric-val mv-present" id="m-present">—</div><div class="metric-lbl">Present today</div></div>
+    <div class="metric"><div class="metric-val mv-absent"  id="m-absent">—</div><div class="metric-lbl">Absent today</div></div>
+    <div class="metric"><div class="metric-val mv-pct"     id="m-pct">—</div><div class="metric-lbl">Attendance rate</div></div>
+  </div>
+
+  <div class="charts-row">
+    <div class="card">
+      <h3>Today's attendance</h3>
+      <div class="legend">
+        <div class="leg"><div class="leg-dot" style="background:#2E7D32"></div>Present</div>
+        <div class="leg"><div class="leg-dot" style="background:#C62828"></div>Absent</div>
+      </div>
+      <div class="chart-wrap"><canvas id="donut-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Weekly trend</h3>
+      <div class="legend">
+        <div class="leg"><div class="leg-dot" style="background:#1565C0"></div>Present</div>
+      </div>
+      <div class="chart-wrap"><canvas id="bar-chart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <h3>Attendance log — today</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input class="search" id="search" placeholder="Search name..." oninput="filterTable()">
+        <div class="filter-row">
+          <button class="fbtn active" onclick="setFilter('all',this)">All</button>
+          <button class="fbtn" onclick="setFilter('PRESENT',this)">Present</button>
+          <button class="fbtn" onclick="setFilter('ABSENT',this)">Absent</button>
+        </div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Department</th>
+          <th>Punch in</th>
+          <th>Punch out</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="att-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <h3>Registered persons</h3>
+      <span style="font-size:12px;color:#999;" id="persons-count"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Department</th>
+          <th>Email</th>
+          <th>Enrolled</th>
+        </tr>
+      </thead>
+      <tbody id="persons-tbody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let allAttendance = [];
+let currentFilter = "all";
+let donutChart, barChart;
+
+const avatarColors = [
+  {bg:"#E3F2FD",color:"#0D47A1"},
+  {bg:"#E8F5E9",color:"#2E7D32"},
+  {bg:"#EDE7F6",color:"#4527A0"},
+  {bg:"#FFF3E0",color:"#E65100"},
+  {bg:"#E0F2F1",color:"#00695C"},
+];
+
+function getInitials(name) {
+  return name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0,2);
+}
+
+function getAvatarColor(name) {
+  return avatarColors[name.charCodeAt(0) % avatarColors.length];
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById("current-time").textContent =
+    now.toLocaleDateString("en-IN", {weekday:"long", year:"numeric", month:"long", day:"numeric"}) +
+    "  " + now.toLocaleTimeString("en-IN");
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll(".fbtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderTable();
+}
+
+function filterTable() { renderTable(); }
+
+function renderTable() {
+  const search = document.getElementById("search").value.toLowerCase();
+  const tbody  = document.getElementById("att-tbody");
+  const rows   = allAttendance.filter(r => {
+    const mf = currentFilter === "all" || r.status === currentFilter;
+    const ms = r.full_name.toLowerCase().includes(search) || r.department.toLowerCase().includes(search);
+    return mf && ms;
+  });
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data">No records found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const av   = getAvatarColor(r.full_name);
+    const pill = r.status === "PRESENT" ? "pill-present" : "pill-absent";
+    return `<tr>
+      <td><div class="name-cell">
+        <div class="avatar" style="background:${av.bg};color:${av.color}">${getInitials(r.full_name)}</div>
+        ${r.full_name}
+      </div></td>
+      <td style="color:#777">${r.department}</td>
+      <td class="mono">${r.time_in}</td>
+      <td class="mono">${r.time_out}</td>
+      <td><span class="pill ${pill}">${r.status}</span></td>
+      <td style="color:#aaa;font-size:12px">${r.date}</td>
+    </tr>`;
+  }).join("");
+}
+
+function buildDonut(present, absent) {
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById("donut-chart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Present","Absent"],
+      datasets: [{ data: [present, absent], backgroundColor: ["#2E7D32","#C62828"], borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "65%",
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function buildBar(weekly) {
+  if (barChart) barChart.destroy();
+  const labels = weekly.map(w => w.date.slice(5));
+  const data   = weekly.map(w => w.count);
+  barChart = new Chart(document.getElementById("bar-chart"), {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{ label:"Present", data: data, backgroundColor: "#1565C0", borderRadius: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function loadSummary() {
+  fetch("/api/summary")
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById("m-total").textContent   = d.total;
+      document.getElementById("m-present").textContent = d.present;
+      document.getElementById("m-absent").textContent  = d.absent;
+      document.getElementById("m-pct").textContent     = d.pct + "%";
+      buildDonut(d.present, d.absent);
+      buildBar(d.weekly);
+    });
+}
+
+function loadAttendance() {
+  fetch("/api/attendance")
+    .then(r => r.json())
+    .then(d => {
+      allAttendance = d;
+      renderTable();
+    });
+}
+
+function loadPersons() {
+  fetch("/api/persons")
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById("persons-count").textContent = d.length + " registered";
+      const tbody = document.getElementById("persons-tbody");
+      if (d.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="no-data">No persons registered yet</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = d.map(p => {
+        const av = getAvatarColor(p.full_name);
+        return `<tr>
+          <td><div class="name-cell">
+            <div class="avatar" style="background:${av.bg};color:${av.color}">${getInitials(p.full_name)}</div>
+            ${p.full_name}
+          </div></td>
+          <td style="color:#777">${p.department}</td>
+          <td style="color:#aaa;font-size:12px">${p.email}</td>
+          <td style="color:#aaa;font-size:12px">${p.created_on}</td>
+        </tr>`;
+      }).join("");
+    });
+}
+
+function generateReport() {
+  fetch("/api/report")
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === "success") {
+        alert("Excel report generated!\nSaved to: " + d.file);
+      }
+    });
+}
+
+function loadAll() {
+  loadSummary();
+  loadAttendance();
+  loadPersons();
+}
+
+const today = new Date().toLocaleDateString("en-IN", {
+  weekday:"long", year:"numeric", month:"long", day:"numeric"
+});
+document.getElementById("today-date").textContent = today;
+
+updateClock();
+setInterval(updateClock, 1000);
+setInterval(loadAll, 30000);
+loadAll();
+</script>
+</body>
+</html>
